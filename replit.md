@@ -72,7 +72,15 @@ When SOS is triggered (manual or automatic):
 - `GET /status` - Health check
 - Legacy device routes: `/api/sensor-data`, `/api/emergency/manual`, `/api/heartbeat` (API key required)
 
+## Frontend Dashboard
+- **Layout**: Desktop sidebar + mobile bottom navigation with 5 pages
+- **Pages**: Home (SOS + stats + upload), Location (live GPS tracking), Contacts (CRUD), History (incident list), Settings (profile + theme)
+- **Theme**: Dark/Light toggle using CSS custom properties, persisted in localStorage
+- **Navigation**: Sidebar nav for desktop (240px), bottom nav for mobile (<768px) with floating SOS button
+- **Stats**: Quick stats cards showing contact count, incident count, location status
+
 ## Recent Changes
+- 2026-02-12: Major dashboard upgrade - sidebar/bottom nav, 5 pages, dark/light theme, settings with profile edit
 - 2026-02-12: Enhanced SOS system with SMS simulation, nearby user broadcast, and media linking
 - 2026-02-12: Added sms_logs and nearby_broadcasts tables
 - 2026-02-12: Added GET /api/incidents top-level route
