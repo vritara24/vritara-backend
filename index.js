@@ -35,6 +35,46 @@ app.use("/api/sos", sosRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/location", locationRoutes);
 
+const { authenticateToken } = require("./server/middleware/auth");
+const { pool } = require("./server/db");
+app.get("/api/incidents", authenticateToken, async (req, res) => {
+  try {
+    const incidentsResult = await pool.query(
+      "SELECT * FROM incident_logs WHERE user_id = $1 ORDER BY created_at DESC",
+      [req.user.id]
+    );
+
+    const incidents = [];
+    for (const incident of incidentsResult.rows) {
+      const smsResult = await pool.query(
+        "SELECT contact_name, contact_phone, status, created_at FROM sms_logs WHERE incident_id = $1",
+        [incident.id]
+      );
+      const broadcastResult = await pool.query(
+        `SELECT nb.distance_meters, nb.status, nb.created_at, u.username as receiver_name
+         FROM nearby_broadcasts nb LEFT JOIN users u ON nb.receiver_id = u.id
+         WHERE nb.incident_id = $1`,
+        [incident.id]
+      );
+      const mediaResult = await pool.query(
+        "SELECT id, filename, original_name, mimetype, file_size, created_at FROM media_storage WHERE incident_id = $1",
+        [incident.id]
+      );
+      incidents.push({
+        ...incident,
+        sms_notifications: smsResult.rows,
+        nearby_broadcasts: broadcastResult.rows,
+        media_files: mediaResult.rows,
+      });
+    }
+
+    res.json({ incidents });
+  } catch (err) {
+    console.error("Get incidents error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.post("/api/sensor-data", validateApiKey, (req, res) => {
   console.log("Sensor Data Received:", req.body);
   const { sound_level, motion_level } = req.body;

@@ -274,7 +274,16 @@ async function triggerSOS() {
     });
     const data = await res.json();
     if (res.ok) {
-      showAlert("SOS sent! Help is on the way.", "success");
+      let alertMsg = "SOS sent!";
+      if (data.notifications) {
+        if (data.notifications.sms_sent > 0) {
+          alertMsg += ` SMS sent to ${data.notifications.sms_sent} contact(s).`;
+        }
+        if (data.notifications.nearby_broadcasts > 0) {
+          alertMsg += ` ${data.notifications.nearby_broadcasts} nearby user(s) alerted.`;
+        }
+      }
+      showAlert(alertMsg, "success");
       loadIncidents();
     } else {
       showAlert(data.error || "Failed to send SOS", "error");
@@ -373,20 +382,39 @@ async function loadIncidents() {
   if (!list) return;
 
   try {
-    const res = await fetch(API_BASE + "/api/sos/incidents", {
+    const res = await fetch(API_BASE + "/api/incidents", {
       headers: authHeaders(),
     });
     const data = await res.json();
     if (data.incidents && data.incidents.length > 0) {
       list.innerHTML = data.incidents
-        .map(
-          (i) => `
+        .map((i) => {
+          let smsInfo = "";
+          if (i.sms_notifications && i.sms_notifications.length > 0) {
+            smsInfo = `<p class="incident-sms">SMS sent to: ${i.sms_notifications.map((s) => escapeHtml(s.contact_name)).join(", ")}</p>`;
+          }
+
+          let broadcastInfo = "";
+          if (i.nearby_broadcasts && i.nearby_broadcasts.length > 0) {
+            broadcastInfo = `<p class="incident-broadcast">Nearby alerts: ${i.nearby_broadcasts.length} user(s) notified</p>`;
+          }
+
+          let mediaInfo = "";
+          if (i.media_files && i.media_files.length > 0) {
+            mediaInfo = `<p class="incident-media">Evidence: ${i.media_files.length} file(s) attached</p>`;
+          }
+
+          return `
         <div class="incident-item">
           <span class="incident-type">${escapeHtml(i.type)} SOS</span>
           <p class="incident-time">${new Date(i.created_at).toLocaleString()}</p>
           <p class="incident-msg">${i.latitude ? "Location: " + Number(i.latitude).toFixed(4) + ", " + Number(i.longitude).toFixed(4) : "No location"}</p>
-        </div>`
-        )
+          ${i.message ? `<p class="incident-msg">${escapeHtml(i.message)}</p>` : ""}
+          ${smsInfo}
+          ${broadcastInfo}
+          ${mediaInfo}
+        </div>`;
+        })
         .join("");
     } else {
       list.innerHTML = '<p class="no-data">No incidents recorded</p>';

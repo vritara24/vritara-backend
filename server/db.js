@@ -51,6 +51,28 @@ async function initializeDatabase() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS sms_logs (
+        id SERIAL PRIMARY KEY,
+        incident_id INTEGER REFERENCES incident_logs(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        contact_name VARCHAR(100) NOT NULL,
+        contact_phone VARCHAR(20) NOT NULL,
+        message TEXT NOT NULL,
+        status VARCHAR(20) DEFAULT 'sent',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS nearby_broadcasts (
+        id SERIAL PRIMARY KEY,
+        incident_id INTEGER REFERENCES incident_logs(id) ON DELETE CASCADE,
+        broadcaster_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        receiver_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        distance_meters DOUBLE PRECISION,
+        message TEXT,
+        status VARCHAR(20) DEFAULT 'sent',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS media_storage (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
