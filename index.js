@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const { initializeDatabase } = require("./server/db");
 
 const validateApiKey = require("./server/middleware/apiKey");
 const authRoutes = require("./server/routes/auth");
@@ -60,6 +61,16 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`VRITARA Server running on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    await initializeDatabase();
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`VRITARA Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  }
+}
+
+startServer();

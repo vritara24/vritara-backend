@@ -1,68 +1,64 @@
 const express = require("express");
 const { authenticateToken } = require("../middleware/auth");
+const { pool } = require("../db");
 
 const router = express.Router();
 
-const incidents = [];
+router.post("/manual", authenticateToken, async (req, res) => {
+  try {
+    const { latitude, longitude, message } = req.body;
 
-router.post("/manual", authenticateToken, (req, res) => {
-  const { latitude, longitude, message } = req.body;
+    const result = await pool.query(
+      "INSERT INTO incident_logs (user_id, type, latitude, longitude, message) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [req.user.id, "manual", latitude || null, longitude || null, message || "Manual SOS triggered"]
+    );
 
-  const incident = {
-    id: Date.now().toString(),
-    userId: req.user.id,
-    type: "manual",
-    latitude: latitude || null,
-    longitude: longitude || null,
-    message: message || "Manual SOS triggered",
-    status: "active",
-    createdAt: new Date().toISOString(),
-  };
+    console.log("MANUAL SOS TRIGGERED:", result.rows[0]);
 
-  incidents.push(incident);
-
-  console.log("MANUAL SOS TRIGGERED:", incident);
-
-  res.status(201).json({
-    emergency: true,
-    message: "SOS signal sent successfully",
-    incident,
-  });
+    res.status(201).json({
+      emergency: true,
+      message: "SOS signal sent successfully",
+      incident: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Manual SOS error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-router.post("/automatic", authenticateToken, (req, res) => {
-  const { latitude, longitude, sound_level, motion_level } = req.body;
+router.post("/automatic", authenticateToken, async (req, res) => {
+  try {
+    const { latitude, longitude, sound_level, motion_level } = req.body;
 
-  const incident = {
-    id: Date.now().toString(),
-    userId: req.user.id,
-    type: "automatic",
-    latitude: latitude || null,
-    longitude: longitude || null,
-    sound_level,
-    motion_level,
-    status: "active",
-    createdAt: new Date().toISOString(),
-  };
+    const result = await pool.query(
+      "INSERT INTO incident_logs (user_id, type, latitude, longitude, sound_level, motion_level) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+      [req.user.id, "automatic", latitude || null, longitude || null, sound_level, motion_level]
+    );
 
-  incidents.push(incident);
+    console.log("AUTOMATIC SOS TRIGGERED:", result.rows[0]);
 
-  console.log("AUTOMATIC SOS TRIGGERED:", incident);
-
-  res.status(201).json({
-    emergency: true,
-    message: "Automatic SOS triggered",
-    incident,
-  });
+    res.status(201).json({
+      emergency: true,
+      message: "Automatic SOS triggered",
+      incident: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Auto SOS error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-router.get("/incidents", authenticateToken, (req, res) => {
-  const userIncidents = incidents
-    .filter((i) => i.userId === req.user.id)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json({ incidents: userIncidents });
+router.get("/incidents", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM incident_logs WHERE user_id = $1 ORDER BY created_at DESC",
+      [req.user.id]
+    );
+    res.json({ incidents: result.rows });
+  } catch (err) {
+    console.error("Get incidents error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
-
-router.getIncidents = () => incidents;
 
 module.exports = router;

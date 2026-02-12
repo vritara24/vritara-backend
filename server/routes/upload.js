@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const { authenticateToken } = require("../middleware/auth");
+const { pool } = require("../db");
 
 const router = express.Router();
 
@@ -29,20 +30,35 @@ const upload = multer({
   },
 });
 
-router.post("/", authenticateToken, upload.single("file"), (req, res) => {
+router.post("/", authenticateToken, upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
-  res.status(201).json({
-    message: "File uploaded successfully",
-    file: {
-      filename: req.file.filename,
-      originalname: req.file.originalname,
-      size: req.file.size,
-      mimetype: req.file.mimetype,
-    },
-  });
+  try {
+    const incidentId = req.body.incident_id || null;
+
+    const result = await pool.query(
+      "INSERT INTO media_storage (user_id, incident_id, filename, original_name, mimetype, file_size, file_path) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+      [
+        req.user.id,
+        incidentId,
+        req.file.filename,
+        req.file.originalname,
+        req.file.mimetype,
+        req.file.size,
+        req.file.path,
+      ]
+    );
+
+    res.status(201).json({
+      message: "File uploaded successfully",
+      file: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Upload save error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 module.exports = router;

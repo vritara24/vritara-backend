@@ -1,44 +1,96 @@
 const API_BASE = "";
 let currentLocation = { latitude: null, longitude: null };
+let otpEmailStore = "";
+let forgotEmailStore = "";
 
 function showAlert(message, type) {
   const box = document.getElementById("alertBox");
   if (!box) return;
   box.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-  setTimeout(() => { box.innerHTML = ""; }, 4000);
+  setTimeout(() => { box.innerHTML = ""; }, 5000);
+}
+
+function hideAllForms() {
+  const ids = ["loginForm", "signupForm", "forgotForm", "resetForm", "otpRequestForm", "otpVerifyForm"];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("hidden");
+  });
+  document.querySelectorAll(".tab-btn").forEach((t) => t.classList.remove("active"));
 }
 
 function switchTab(tab) {
-  const loginForm = document.getElementById("loginForm");
-  const signupForm = document.getElementById("signupForm");
-  const forgotForm = document.getElementById("forgotForm");
+  hideAllForms();
   const tabs = document.querySelectorAll(".tab-btn");
-
-  if (loginForm) loginForm.classList.add("hidden");
-  if (signupForm) signupForm.classList.add("hidden");
-  if (forgotForm) forgotForm.classList.add("hidden");
-
-  tabs.forEach((t) => t.classList.remove("active"));
-
   if (tab === "login") {
-    if (loginForm) loginForm.classList.remove("hidden");
+    const el = document.getElementById("loginForm");
+    if (el) el.classList.remove("hidden");
     if (tabs[0]) tabs[0].classList.add("active");
   } else if (tab === "signup") {
-    if (signupForm) signupForm.classList.remove("hidden");
+    const el = document.getElementById("signupForm");
+    if (el) el.classList.remove("hidden");
     if (tabs[1]) tabs[1].classList.add("active");
   }
 }
 
 function showForgot() {
-  const loginForm = document.getElementById("loginForm");
-  const signupForm = document.getElementById("signupForm");
-  const forgotForm = document.getElementById("forgotForm");
-  const tabs = document.querySelectorAll(".tab-btn");
+  hideAllForms();
+  const el = document.getElementById("forgotForm");
+  if (el) el.classList.remove("hidden");
+}
 
-  if (loginForm) loginForm.classList.add("hidden");
-  if (signupForm) signupForm.classList.add("hidden");
-  if (forgotForm) forgotForm.classList.remove("hidden");
-  tabs.forEach((t) => t.classList.remove("active"));
+function showOtpRequest() {
+  hideAllForms();
+  const el = document.getElementById("otpRequestForm");
+  if (el) el.classList.remove("hidden");
+}
+
+async function requestOtp() {
+  const email = document.getElementById("otpEmail").value;
+  if (!email) return showAlert("Please enter your email", "error");
+
+  try {
+    const res = await fetch(API_BASE + "/api/request-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      otpEmailStore = email;
+      showAlert("OTP sent! Code: " + data.otp + " (simulated)", "success");
+      hideAllForms();
+      const el = document.getElementById("otpVerifyForm");
+      if (el) el.classList.remove("hidden");
+    } else {
+      showAlert(data.error, "error");
+    }
+  } catch (err) {
+    showAlert("Network error", "error");
+  }
+}
+
+async function verifyOtp() {
+  const otp = document.getElementById("otpCode").value;
+  if (!otp) return showAlert("Please enter the OTP", "error");
+
+  try {
+    const res = await fetch(API_BASE + "/api/verify-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: otpEmailStore, otp }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      localStorage.setItem("vritara_token", data.token);
+      localStorage.setItem("vritara_user", JSON.stringify(data.user));
+      window.location.href = "/dashboard.html";
+    } else {
+      showAlert(data.error, "error");
+    }
+  } catch (err) {
+    showAlert("Network error", "error");
+  }
 }
 
 async function handleForgot() {
@@ -53,7 +105,34 @@ async function handleForgot() {
     });
     const data = await res.json();
     if (res.ok) {
-      showAlert("Temporary password: " + data.tempPassword, "success");
+      forgotEmailStore = email;
+      showAlert("Reset token: " + data.resetToken + " (simulated)", "success");
+      hideAllForms();
+      const el = document.getElementById("resetForm");
+      if (el) el.classList.remove("hidden");
+    } else {
+      showAlert(data.error, "error");
+    }
+  } catch (err) {
+    showAlert("Network error", "error");
+  }
+}
+
+async function handleReset() {
+  const resetToken = document.getElementById("resetToken").value;
+  const newPassword = document.getElementById("newPassword").value;
+  if (!resetToken || !newPassword) return showAlert("Please fill in all fields", "error");
+
+  try {
+    const res = await fetch(API_BASE + "/api/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: forgotEmailStore, resetToken, newPassword }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showAlert(data.message, "success");
+      switchTab("login");
     } else {
       showAlert(data.error, "error");
     }
@@ -89,9 +168,9 @@ if (loginForm) {
   });
 }
 
-const signupForm = document.getElementById("signupForm");
-if (signupForm) {
-  signupForm.addEventListener("submit", async (e) => {
+const signupFormEl = document.getElementById("signupForm");
+if (signupFormEl) {
+  signupFormEl.addEventListener("submit", async (e) => {
     e.preventDefault();
     const username = document.getElementById("signupUsername").value;
     const email = document.getElementById("signupEmail").value;
@@ -304,8 +383,8 @@ async function loadIncidents() {
           (i) => `
         <div class="incident-item">
           <span class="incident-type">${escapeHtml(i.type)} SOS</span>
-          <p class="incident-time">${new Date(i.createdAt).toLocaleString()}</p>
-          <p class="incident-msg">${i.latitude ? "Location: " + i.latitude.toFixed(4) + ", " + i.longitude.toFixed(4) : "No location"}</p>
+          <p class="incident-time">${new Date(i.created_at).toLocaleString()}</p>
+          <p class="incident-msg">${i.latitude ? "Location: " + Number(i.latitude).toFixed(4) + ", " + Number(i.longitude).toFixed(4) : "No location"}</p>
         </div>`
         )
         .join("");
@@ -335,7 +414,7 @@ async function uploadFile(input) {
     });
     const data = await res.json();
     if (res.ok) {
-      statusEl.textContent = "Uploaded: " + data.file.originalname;
+      statusEl.textContent = "Uploaded: " + data.file.original_name;
       showAlert("File uploaded successfully!", "success");
     } else {
       statusEl.textContent = "Upload failed";
