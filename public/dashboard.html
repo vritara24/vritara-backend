@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VRITARA Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="dash-header">
+      <h1>VRITARA</h1>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div id="alertBox"></div>
+
+    <p class="welcome-text" id="welcomeText">Welcome back!</p>
+
+    <div class="status-bar status-normal" id="statusBar">
+      Status: Normal
+    </div>
+
+    <div class="sos-section">
+      <button class="sos-btn" id="sosBtn" onclick="triggerSOS()">SOS</button>
+      <p class="sos-label">Tap for emergency help</p>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Emergency Contacts</h3>
+      <div id="contactsList"></div>
+      <div id="addContactSection">
+        <div class="add-contact-form" id="contactForm">
+          <input type="text" id="contactName" placeholder="Contact name">
+          <input type="tel" id="contactPhone" placeholder="Phone number">
+          <input type="text" id="contactRelation" placeholder="Relationship (optional)">
+          <button class="btn btn-success" onclick="addContact()" style="padding:10px;">Add Contact</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Live Location</h3>
+      <div class="location-info" id="locationInfo">
+        Fetching location...
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Upload Evidence</h3>
+      <div class="upload-area">
+        <label class="upload-btn">
+          Photo
+          <input type="file" accept="image/*" capture="environment" onchange="uploadFile(this)">
+        </label>
+        <label class="upload-btn">
+          Audio
+          <input type="file" accept="audio/*" capture="microphone" onchange="uploadFile(this)">
+        </label>
+      </div>
+      <div id="uploadStatus" style="margin-top:10px;font-size:0.85rem;color:#888;"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Incident History</h3>
+      <div id="incidentList"></div>
+    </div>
+  </div>
+
+  <div class="emergency-overlay hidden" id="emergencyOverlay"></div>
+
+  <script src="/app.js"></script>
+  <script>
+    if (!localStorage.getItem("vritara_token")) {
+      window.location.href = "/";
+    } else {
+      initDashboard();
+    }
+  </script>
+</body>
+</html>

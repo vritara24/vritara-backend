@@ -1,67 +1,65 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+
+const validateApiKey = require("./server/middleware/apiKey");
+const authRoutes = require("./server/routes/auth");
+const userRoutes = require("./server/routes/user");
+const contactRoutes = require("./server/routes/contacts");
+const sosRoutes = require("./server/routes/sos");
+const uploadRoutes = require("./server/routes/upload");
+const locationRoutes = require("./server/routes/location");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
-
-// API Key
-const API_KEY = "vritara-safety-device-key-2024";
-
-// Middleware to validate API Key
-function validateApiKey(req, res, next) {
-  const clientKey = req.headers["x-api-key"];
-  if (clientKey !== API_KEY) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
   next();
-}
-
-// Test route
-app.get("/", (req, res) => {
-  res.json({ status: "VRITARA Backend Running" });
 });
 
-// Status route
+app.use(express.static(path.join(__dirname, "public")));
+
+const PORT = 5000;
+
 app.get("/status", (req, res) => {
   res.json({ status: "API is live" });
 });
 
-// Sensor data route
+app.use("/api", authRoutes);
+app.use("/api/user", userRoutes);
+app.use("/api/contacts", contactRoutes);
+app.use("/api/sos", sosRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/location", locationRoutes);
+
 app.post("/api/sensor-data", validateApiKey, (req, res) => {
   console.log("Sensor Data Received:", req.body);
-
   const { sound_level, motion_level } = req.body;
-
   let emergency = false;
-
   if (sound_level > 80 && motion_level > 1.5) {
     emergency = true;
   }
-
   res.json({
-    emergency: emergency,
+    emergency,
     message: emergency ? "Emergency detected" : "Normal condition",
   });
 });
 
-// Manual emergency route
 app.post("/api/emergency/manual", validateApiKey, (req, res) => {
   console.log("Manual Emergency Triggered");
-
-  res.json({
-    emergency: true,
-    message: "Manual SOS Triggered",
-  });
+  res.json({ emergency: true, message: "Manual SOS Triggered" });
 });
 
-// Heartbeat route
 app.post("/api/heartbeat", validateApiKey, (req, res) => {
   res.json({ status: "Device alive" });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`VRITARA Server running on port ${PORT}`);
 });

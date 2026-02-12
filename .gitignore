@@ -131,3 +131,7 @@ dist
 
 # Replit debugger
 .breakpoints
+
+# Uploads
+server/uploads/*
+!server/uploads/.gitkeep
