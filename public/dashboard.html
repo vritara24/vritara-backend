@@ -10,6 +10,7 @@
   <div class="app-layout">
     <nav class="sidebar">
       <div class="sidebar-logo">
+        <img src="/logo.png" alt="VRITARA" class="sidebar-logo-img" onerror="this.style.display='none'">
         <h1>VRITARA</h1>
         <span class="sidebar-tagline">Safety App</span>
       </div>
@@ -25,6 +26,10 @@
         <button class="nav-item" data-page="contacts" onclick="switchPage('contacts')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
           <span>Contacts</span>
+        </button>
+        <button class="nav-item" data-page="media" onclick="switchPage('media')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span>Media</span>
         </button>
         <button class="nav-item" data-page="history" onclick="switchPage('history')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -44,6 +49,7 @@
     </nav>
 
     <div class="mobile-header">
+      <img src="/logo.png" alt="VRITARA" class="mobile-logo-img" onerror="this.style.display='none'">
       <h1 class="mobile-logo">VRITARA</h1>
       <button class="theme-toggle-mobile" onclick="toggleTheme()" title="Toggle theme">
         <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -66,11 +72,11 @@
         </div>
 
         <div class="sos-section">
-          <div class="sos-ring">
-            <button class="sos-btn" id="sosBtn" onclick="triggerSOS()">SOS</button>
+          <div class="sos-ring" id="sosRing">
+            <button class="sos-btn" id="sosBtn" onclick="toggleSOS()">SOS</button>
           </div>
-          <p class="sos-label">Tap for emergency help</p>
-          <p class="sos-sublabel">Your location and alerts will be sent to your emergency contacts</p>
+          <p class="sos-label" id="sosLabel">Tap to activate emergency</p>
+          <p class="sos-sublabel" id="sosSublabel">Your location and alerts will be sent to your emergency contacts</p>
         </div>
 
         <div class="quick-stats" id="quickStats">
@@ -186,6 +192,14 @@
         </div>
       </section>
 
+      <section class="page" id="page-media">
+        <div class="page-header">
+          <h2>Media Storage</h2>
+          <p class="page-desc">Captured images and audio from incidents</p>
+        </div>
+        <div id="mediaGallery"></div>
+      </section>
+
       <section class="page" id="page-history">
         <div class="page-header">
           <h2>Incident History</h2>
@@ -272,12 +286,12 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
         <span>Location</span>
       </button>
-      <button class="bottom-nav-item sos-nav" onclick="triggerSOS()">
-        <div class="sos-nav-btn">SOS</div>
+      <button class="bottom-nav-item sos-nav" onclick="toggleSOS()">
+        <div class="sos-nav-btn" id="sosNavBtn">SOS</div>
       </button>
-      <button class="bottom-nav-item" data-page="contacts" onclick="switchPage('contacts')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/></svg>
-        <span>Contacts</span>
+      <button class="bottom-nav-item" data-page="media" onclick="switchPage('media')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span>Media</span>
       </button>
       <button class="bottom-nav-item" data-page="settings" onclick="switchPage('settings')">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -287,6 +301,21 @@
   </div>
 
   <div class="emergency-overlay hidden" id="emergencyOverlay"></div>
+
+  <div class="modal-overlay hidden" id="deleteModal">
+    <div class="modal-card">
+      <h3>Confirm Delete</h3>
+      <p>Enter your password to delete this media file.</p>
+      <div class="form-group">
+        <input type="password" id="deletePassword" placeholder="Enter your password">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="confirmDeleteMedia()">Delete</button>
+        <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+      </div>
+      <p class="modal-error hidden" id="deleteError"></p>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
   <script>

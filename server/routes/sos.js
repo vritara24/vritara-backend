@@ -57,7 +57,7 @@ async function simulateSmsToContacts(userId, incidentId, incidentType, latitude,
 }
 
 async function broadcastToNearbyUsers(userId, incidentId, latitude, longitude) {
-  if (!latitude || !longitude) return [];
+  if (latitude == null || longitude == null) return [];
 
   const recentLocations = await pool.query(
     `SELECT DISTINCT ON (user_id) user_id, latitude, longitude
@@ -113,6 +113,101 @@ async function getMediaForIncident(incidentId) {
   return result.rows;
 }
 
+router.get("/state", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT emergency_state, active_incident_id FROM users WHERE id = $1",
+      [req.user.id]
+    );
+    const user = result.rows[0];
+    res.json({
+      state: user?.emergency_state || "normal",
+      active_incident_id: user?.active_incident_id || null,
+    });
+  } catch (err) {
+    console.error("Get SOS state error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/toggle", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const userResult = await client.query(
+      "SELECT emergency_state, active_incident_id FROM users WHERE id = $1",
+      [req.user.id]
+    );
+    const currentState = userResult.rows[0]?.emergency_state || "normal";
+
+    if (currentState === "normal") {
+      const { latitude, longitude, message } = req.body;
+
+      await saveLocationLog(client, req.user.id, latitude, longitude);
+
+      const incidentResult = await client.query(
+        "INSERT INTO incident_logs (user_id, type, latitude, longitude, message, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+        [req.user.id, "manual", latitude != null ? latitude : null, longitude != null ? longitude : null, message || "Manual SOS triggered", "active"]
+      );
+      const incident = incidentResult.rows[0];
+
+      await client.query(
+        "UPDATE users SET emergency_state = 'emergency', active_incident_id = $1 WHERE id = $2",
+        [incident.id, req.user.id]
+      );
+
+      await client.query("COMMIT");
+
+      const smsLogs = await simulateSmsToContacts(req.user.id, incident.id, "manual", latitude, longitude);
+      const nearbyBroadcasts = await broadcastToNearbyUsers(req.user.id, incident.id, latitude, longitude);
+
+      console.log("SOS ACTIVATED:", { incident: incident.id, sms_sent: smsLogs.length, nearby_alerts: nearbyBroadcasts.length });
+
+      res.status(201).json({
+        state: "emergency",
+        incident,
+        notifications: {
+          sms_sent: smsLogs.length,
+          sms_details: smsLogs.map((s) => ({ contact: s.contact_name, phone: s.contact_phone, status: s.status })),
+          nearby_broadcasts: nearbyBroadcasts.length,
+          nearby_details: nearbyBroadcasts.map((b) => ({ receiver: b.receiver_name, distance: b.distance_meters + "m", status: b.status })),
+        },
+      });
+    } else {
+      const activeIncidentId = userResult.rows[0]?.active_incident_id;
+
+      if (activeIncidentId) {
+        await client.query(
+          "UPDATE incident_logs SET status = 'resolved' WHERE id = $1 AND user_id = $2",
+          [activeIncidentId, req.user.id]
+        );
+      }
+
+      await client.query(
+        "UPDATE users SET emergency_state = 'normal', active_incident_id = NULL WHERE id = $1",
+        [req.user.id]
+      );
+
+      await client.query("COMMIT");
+
+      console.log("SOS DEACTIVATED:", { incident: activeIncidentId });
+
+      res.json({
+        state: "normal",
+        resolved_incident_id: activeIncidentId,
+        message: "Emergency resolved",
+      });
+    }
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("SOS toggle error:", err);
+    res.status(500).json({ error: "Server error" });
+  } finally {
+    client.release();
+  }
+});
+
 router.post("/manual", authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -156,17 +251,9 @@ router.post("/manual", authenticateToken, async (req, res) => {
       incident,
       notifications: {
         sms_sent: smsLogs.length,
-        sms_details: smsLogs.map((s) => ({
-          contact: s.contact_name,
-          phone: s.contact_phone,
-          status: s.status,
-        })),
+        sms_details: smsLogs.map((s) => ({ contact: s.contact_name, phone: s.contact_phone, status: s.status })),
         nearby_broadcasts: nearbyBroadcasts.length,
-        nearby_details: nearbyBroadcasts.map((b) => ({
-          receiver: b.receiver_name,
-          distance: b.distance_meters + "m",
-          status: b.status,
-        })),
+        nearby_details: nearbyBroadcasts.map((b) => ({ receiver: b.receiver_name, distance: b.distance_meters + "m", status: b.status })),
       },
       media,
     });
@@ -231,17 +318,9 @@ router.post("/automatic", authenticateToken, async (req, res) => {
       incident,
       notifications: {
         sms_sent: smsLogs.length,
-        sms_details: smsLogs.map((s) => ({
-          contact: s.contact_name,
-          phone: s.contact_phone,
-          status: s.status,
-        })),
+        sms_details: smsLogs.map((s) => ({ contact: s.contact_name, phone: s.contact_phone, status: s.status })),
         nearby_broadcasts: nearbyBroadcasts.length,
-        nearby_details: nearbyBroadcasts.map((b) => ({
-          receiver: b.receiver_name,
-          distance: b.distance_meters + "m",
-          status: b.status,
-        })),
+        nearby_details: nearbyBroadcasts.map((b) => ({ receiver: b.receiver_name, distance: b.distance_meters + "m", status: b.status })),
       },
       media,
     });

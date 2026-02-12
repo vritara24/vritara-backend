@@ -85,6 +85,12 @@ async function initializeDatabase() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_state VARCHAR(20) DEFAULT 'normal';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS active_incident_id INTEGER;
+    `);
+
     console.log("Database tables initialized successfully");
   } finally {
     client.release();

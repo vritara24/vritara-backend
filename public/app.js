@@ -4,6 +4,8 @@ let otpEmailStore = "";
 let forgotEmailStore = "";
 let contactCount = 0;
 let incidentCount = 0;
+let emergencyState = "normal";
+let deleteMediaId = null;
 
 function showAlert(message, type) {
   const box = document.getElementById("alertBox");
@@ -222,6 +224,7 @@ function switchPage(page) {
   if (page === "contacts") loadContacts();
   if (page === "history") loadIncidents();
   if (page === "settings") loadProfile();
+  if (page === "media") loadMedia();
 }
 
 function initTheme() {
@@ -253,6 +256,7 @@ async function initDashboard() {
   loadIncidents();
   startLocationTracking();
   loadProfile();
+  loadSOSState();
 }
 
 function startLocationTracking() {
@@ -304,23 +308,69 @@ function startLocationTracking() {
   );
 }
 
-async function triggerSOS() {
+async function loadSOSState() {
+  try {
+    const res = await fetch(API_BASE + "/api/sos/state", {
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      emergencyState = data.state || "normal";
+      updateSOSUI();
+    }
+  } catch (err) {}
+}
+
+function updateSOSUI() {
   const statusBar = document.getElementById("statusBar");
   const statusText = document.getElementById("statusText");
+  const sosBtn = document.getElementById("sosBtn");
+  const sosRing = document.getElementById("sosRing");
+  const sosLabel = document.getElementById("sosLabel");
+  const sosSublabel = document.getElementById("sosSublabel");
+  const sosNavBtn = document.getElementById("sosNavBtn");
+
+  if (emergencyState === "emergency") {
+    if (statusBar) statusBar.className = "status-bar status-emergency";
+    if (statusText) statusText.textContent = "EMERGENCY ACTIVE";
+    if (sosBtn) {
+      sosBtn.classList.add("sos-active");
+      sosBtn.textContent = "SAFE";
+    }
+    if (sosRing) sosRing.classList.add("emergency-active");
+    if (sosLabel) sosLabel.textContent = "Tap to mark yourself safe";
+    if (sosSublabel) sosSublabel.textContent = "This will resolve the current emergency incident";
+    if (sosNavBtn) {
+      sosNavBtn.classList.add("sos-nav-active");
+      sosNavBtn.textContent = "SAFE";
+    }
+  } else {
+    if (statusBar) statusBar.className = "status-bar status-normal";
+    if (statusText) statusText.textContent = "Status: Normal";
+    if (sosBtn) {
+      sosBtn.classList.remove("sos-active");
+      sosBtn.textContent = "SOS";
+    }
+    if (sosRing) sosRing.classList.remove("emergency-active");
+    if (sosLabel) sosLabel.textContent = "Tap to activate emergency";
+    if (sosSublabel) sosSublabel.textContent = "Your location and alerts will be sent to your emergency contacts";
+    if (sosNavBtn) {
+      sosNavBtn.classList.remove("sos-nav-active");
+      sosNavBtn.textContent = "SOS";
+    }
+  }
+}
+
+async function toggleSOS() {
   const overlay = document.getElementById("emergencyOverlay");
 
-  if (statusBar) {
-    statusBar.className = "status-bar status-emergency";
-  }
-  if (statusText) statusText.textContent = "EMERGENCY ACTIVE";
-
-  if (overlay) {
+  if (emergencyState === "normal" && overlay) {
     overlay.classList.remove("hidden");
     setTimeout(() => overlay.classList.add("hidden"), 2000);
   }
 
   try {
-    const res = await fetch(API_BASE + "/api/sos/manual", {
+    const res = await fetch(API_BASE + "/api/sos/toggle", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
@@ -331,28 +381,56 @@ async function triggerSOS() {
     });
     const data = await res.json();
     if (res.ok) {
-      let alertMsg = "SOS sent!";
-      if (data.notifications) {
-        if (data.notifications.sms_sent > 0) {
-          alertMsg += ` SMS sent to ${data.notifications.sms_sent} contact(s).`;
+      emergencyState = data.state;
+      updateSOSUI();
+
+      if (data.state === "emergency") {
+        let alertMsg = "SOS ACTIVATED!";
+        if (data.notifications) {
+          if (data.notifications.sms_sent > 0) {
+            alertMsg += ` SMS sent to ${data.notifications.sms_sent} contact(s).`;
+          }
+          if (data.notifications.nearby_broadcasts > 0) {
+            alertMsg += ` ${data.notifications.nearby_broadcasts} nearby user(s) alerted.`;
+          }
         }
-        if (data.notifications.nearby_broadcasts > 0) {
-          alertMsg += ` ${data.notifications.nearby_broadcasts} nearby user(s) alerted.`;
+        showAlert(alertMsg, "error");
+
+        if (data.incident && data.incident.id) {
+          simulateCapture(data.incident.id);
         }
+      } else {
+        showAlert("Emergency resolved. You are safe.", "success");
       }
-      showAlert(alertMsg, "success");
+
       loadIncidents();
     } else {
-      showAlert(data.error || "Failed to send SOS", "error");
+      showAlert(data.error || "Failed to toggle SOS", "error");
     }
   } catch (err) {
-    showAlert("Network error sending SOS", "error");
+    showAlert("Network error", "error");
   }
+}
 
-  setTimeout(() => {
-    if (statusBar) statusBar.className = "status-bar status-normal";
-    if (statusText) statusText.textContent = "Status: Normal";
-  }, 30000);
+async function simulateCapture(incidentId) {
+  try {
+    const imageRes = fetch(API_BASE + "/api/upload/simulate-capture", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ incident_id: incidentId, type: "image" }),
+    });
+
+    const audioRes = fetch(API_BASE + "/api/upload/simulate-capture", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ incident_id: incidentId, type: "audio" }),
+    });
+
+    await Promise.all([imageRes, audioRes]);
+    console.log("Simulated media capture completed for incident", incidentId);
+  } catch (err) {
+    console.error("Simulate capture error:", err);
+  }
 }
 
 async function loadContacts() {
@@ -466,9 +544,11 @@ async function loadIncidents() {
           if (i.media_files && i.media_files.length > 0) {
             mediaInfo = `<p class="incident-media">Evidence: ${i.media_files.length} file(s) attached</p>`;
           }
+          const statusBadge = i.status ? `<span class="incident-status incident-status-${i.status}">${i.status}</span>` : "";
           return `
         <div class="incident-item">
           <span class="incident-type">${escapeHtml(i.type)} SOS</span>
+          ${statusBadge}
           <p class="incident-time">${new Date(i.created_at).toLocaleString()}</p>
           <p class="incident-msg">${i.latitude ? "Location: " + Number(i.latitude).toFixed(4) + ", " + Number(i.longitude).toFixed(4) : "No location"}</p>
           ${i.message ? `<p class="incident-msg">${escapeHtml(i.message)}</p>` : ""}
@@ -497,6 +577,107 @@ function updateStats() {
   if (statContacts) statContacts.textContent = contactCount;
   if (statIncidents) statIncidents.textContent = incidentCount;
   if (contactCountText) contactCountText.textContent = contactCount + " / 3 contacts";
+}
+
+async function loadMedia() {
+  const gallery = document.getElementById("mediaGallery");
+  if (!gallery) return;
+
+  try {
+    const res = await fetch(API_BASE + "/api/upload/media", {
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (data.media && data.media.length > 0) {
+      gallery.innerHTML = '<div class="media-gallery">' + data.media.map((m) => {
+        const isImage = m.mimetype && m.mimetype.startsWith("image");
+        const isAudio = m.mimetype && m.mimetype.startsWith("audio");
+        const subDir = isAudio ? "audio" : "images";
+
+        let preview = "";
+        if (isImage) {
+          preview = `<div class="media-preview"><img src="/uploads/${subDir}/${escapeHtml(m.filename)}" alt="${escapeHtml(m.original_name)}" onerror="this.parentElement.innerHTML='<div class=media-preview-audio><svg width=40 height=40 viewBox=&quot;0 0 24 24&quot; fill=none stroke=currentColor stroke-width=2><rect x=3 y=3 width=18 height=18 rx=2 ry=2/><circle cx=8.5 cy=8.5 r=1.5/><polyline points=&quot;21 15 16 10 5 21&quot;/></svg><span>Image</span></div>'"></div>`;
+        } else if (isAudio) {
+          preview = `<div class="media-preview"><div class="media-preview-audio"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg><span>Audio</span></div></div>`;
+        } else {
+          preview = `<div class="media-preview"><div class="media-preview-audio"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>File</span></div></div>`;
+        }
+
+        const sizeKB = m.file_size ? (m.file_size / 1024).toFixed(1) + " KB" : "--";
+        const incidentBadge = m.incident_id
+          ? `<div class="media-incident-badge" style="background:var(--warning-bg);color:var(--warning)">Incident #${m.incident_id}${m.incident_status ? " - " + m.incident_status : ""}</div>`
+          : `<div class="media-incident-badge" style="background:var(--info-bg);color:var(--info)">No incident</div>`;
+
+        return `
+        <div class="media-item">
+          ${preview}
+          <div class="media-info">
+            <div class="media-name">${escapeHtml(m.original_name)}</div>
+            <div class="media-meta">${sizeKB} &middot; ${new Date(m.created_at).toLocaleString()}</div>
+            ${incidentBadge}
+          </div>
+          <button class="media-delete-btn" onclick="openDeleteModal(${m.id})">Delete</button>
+        </div>`;
+      }).join("") + '</div>';
+    } else {
+      gallery.innerHTML = '<p class="no-data">No media files yet. Media is captured automatically during SOS emergencies.</p>';
+    }
+  } catch (err) {
+    gallery.innerHTML = '<p class="no-data">Failed to load media</p>';
+  }
+}
+
+function openDeleteModal(mediaId) {
+  deleteMediaId = mediaId;
+  const modal = document.getElementById("deleteModal");
+  const passwordInput = document.getElementById("deletePassword");
+  const errorEl = document.getElementById("deleteError");
+  if (modal) modal.classList.remove("hidden");
+  if (passwordInput) passwordInput.value = "";
+  if (errorEl) errorEl.classList.add("hidden");
+}
+
+function closeDeleteModal() {
+  deleteMediaId = null;
+  const modal = document.getElementById("deleteModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function confirmDeleteMedia() {
+  const password = document.getElementById("deletePassword").value;
+  const errorEl = document.getElementById("deleteError");
+
+  if (!password) {
+    if (errorEl) {
+      errorEl.textContent = "Please enter your password";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  try {
+    const res = await fetch(API_BASE + "/api/upload/delete/" + deleteMediaId, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      closeDeleteModal();
+      showAlert("Media deleted successfully", "success");
+      loadMedia();
+    } else {
+      if (errorEl) {
+        errorEl.textContent = data.error || "Delete failed";
+        errorEl.classList.remove("hidden");
+      }
+    }
+  } catch (err) {
+    if (errorEl) {
+      errorEl.textContent = "Network error";
+      errorEl.classList.remove("hidden");
+    }
+  }
 }
 
 async function loadProfile() {
