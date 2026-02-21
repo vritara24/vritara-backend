@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/uploads", express.static(path.join(__dirname, "server/uploads")));
 
-const PORT = 5000;
+const PORT = parseInt(process.env.PORT || "5000", 10);
 
 app.get("/status", (req, res) => {
   res.json({ status: "API is live" });
