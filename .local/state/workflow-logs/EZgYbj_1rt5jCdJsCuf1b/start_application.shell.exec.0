@@ -1,0 +1,7 @@
+Database tables initialized successfully
+VRITARA Server running on port 5000
+[NEARBY BROADCAST] No users found within 200m radius
+SOS ACTIVATED: { incident: [33m18[39m, sms_sent: [33m0[39m, nearby_alerts: [33m0[39m }
+[SIMULATED IMAGE CAPTURE] File: 1773390274412-26256978.bmp for incident 18
+[SIMULATED AUDIO CAPTURE] File: 1773390274424-179197557.wav for incident 18
+Sensor Data Received: { sound_level: [33m90[39m, motion_level: [33m2[39m }
