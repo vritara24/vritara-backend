@@ -1,4 +1,6 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 const { pool } = require("../db");
 const validateApiKey = require("../middleware/apiKey");
 
@@ -10,6 +12,14 @@ const router = express.Router();
 */
 const LINKED_EMAIL = "swasthikshetty547@gmail.com";
 const LINKED_DEVICE_ID = "VRITARA001";
+
+// uploads folder
+const uploadsDir = path.join(__dirname, "../uploads");
+
+// create uploads folder if missing
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // ==========================
 // DEVICE SOS ROUTE
@@ -31,7 +41,6 @@ router.post("/sos", validateApiKey, async (req, res) => {
       return res.status(400).json({ error: "device_id required" });
     }
 
-    // Check if correct device
     if (device_id !== LINKED_DEVICE_ID) {
       return res.status(404).json({
         error: "Unknown device",
@@ -110,5 +119,95 @@ router.post("/heartbeat", validateApiKey, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+// ==========================
+// REAL IMAGE UPLOAD ROUTE
+// ==========================
+router.post(
+  "/upload-image",
+  validateApiKey,
+  express.raw({ type: "*/*", limit: "10mb" }),
+  async (req, res) => {
+    const client = await pool.connect();
+
+    try {
+      const imageBuffer = req.body;
+
+      if (!imageBuffer || !imageBuffer.length) {
+        return res.status(400).json({ error: "No image received" });
+      }
+
+      // Find linked user
+      const userResult = await client.query(
+        "SELECT id FROM users WHERE email = $1 LIMIT 1",
+        [LINKED_EMAIL]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: "Linked user not found" });
+      }
+
+      const user_id = userResult.rows[0].id;
+
+      // Get latest incident
+      const incidentResult = await client.query(
+        `SELECT id
+         FROM incident_logs
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [user_id]
+      );
+
+      if (incidentResult.rows.length === 0) {
+        return res.status(404).json({ error: "No incident found to attach image" });
+      }
+
+      const incidentId = incidentResult.rows[0].id;
+
+      // create filename
+      const fileName = `incident_${incidentId}_${Date.now()}.jpg`;
+      const filePath = path.join(uploadsDir, fileName);
+
+      // save image file
+      fs.writeFileSync(filePath, imageBuffer);
+
+      // save DB record
+      const mediaResult = await client.query(
+        `INSERT INTO media_storage (
+          incident_id,
+          filename,
+          original_name,
+          mimetype,
+          file_size,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING *`,
+        [
+          incidentId,
+          fileName,
+          fileName,
+          "image/jpeg",
+          imageBuffer.length
+        ]
+      );
+
+      console.log("Image uploaded successfully for incident:", incidentId);
+
+      res.json({
+        success: true,
+        message: "Image uploaded successfully",
+        media: mediaResult.rows[0]
+      });
+
+    } catch (err) {
+      console.error("Upload image error:", err);
+      res.status(500).json({ error: "Upload failed", details: err.message });
+    } finally {
+      client.release();
+    }
+  }
+);
 
 module.exports = router;
