@@ -4,13 +4,15 @@ const validateApiKey = require("../middleware/apiKey");
 
 const router = express.Router();
 
-// DEVICE SOS TRIGGER
+/*
+  DEMO MODE:
+  VRITARA001 -> user_id = 1
+*/
+
 router.post("/sos", validateApiKey, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    await client.query("BEGIN");
-
     const {
       device_id,
       trigger_type,
@@ -20,42 +22,46 @@ router.post("/sos", validateApiKey, async (req, res) => {
       motion_level
     } = req.body;
 
-    // IMPORTANT:
-    // Replace this with the user ID of your demo account if needed
-    const DEMO_USER_ID = 1;
+    if (!device_id) {
+      return res.status(400).json({ error: "device_id required" });
+    }
+
+    // DEMO HARD-CODED USER LINK
+    let user_id = null;
+
+    if (device_id === "VRITARA001") {
+      user_id = 1;
+    }
+
+    if (!user_id) {
+      return res.status(404).json({ error: "Device not linked to any user" });
+    }
+
+    await client.query("BEGIN");
 
     const incidentResult = await client.query(
-      `INSERT INTO incident_logs
-      (user_id, type, latitude, longitude, message, sound_level, motion_level, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING *`,
+      `INSERT INTO incident_logs (user_id, type, latitude, longitude, message, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       RETURNING *`,
       [
-        DEMO_USER_ID,
-        trigger_type || "device",
+        user_id,
+        "device",
         latitude || null,
         longitude || null,
-        "SOS from wearable device",
-        sound_level || null,
-        motion_level || null,
+        `Device SOS Triggered (${trigger_type || "unknown"}) | Sound: ${sound_level || 0} | Motion: ${motion_level || 0}`,
         "active"
       ]
     );
 
     const incident = incidentResult.rows[0];
 
-    await client.query(
-      "UPDATE users SET emergency_state='emergency', active_incident_id=$1 WHERE id=$2",
-      [incident.id, DEMO_USER_ID]
-    );
-
     await client.query("COMMIT");
 
     res.json({
       success: true,
-      incident_id: incident.id,
-      message: "Device SOS stored successfully"
+      message: "Device SOS saved successfully",
+      incident
     });
-
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("Device SOS error:", err);
@@ -65,13 +71,14 @@ router.post("/sos", validateApiKey, async (req, res) => {
   }
 });
 
-// DEVICE HEARTBEAT
 router.post("/heartbeat", validateApiKey, async (req, res) => {
   try {
+    const { device_id } = req.body || {};
+
     res.json({
       success: true,
       status: "Device alive",
-      timestamp: new Date().toISOString()
+      device_id: device_id || "unknown"
     });
   } catch (err) {
     console.error("Heartbeat error:", err);
