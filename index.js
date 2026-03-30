@@ -12,6 +12,7 @@ const contactRoutes = require("./server/routes/contacts");
 const sosRoutes = require("./server/routes/sos");
 const uploadRoutes = require("./server/routes/upload");
 const locationRoutes = require("./server/routes/location");
+const deviceRoutes = require("./server/routes/device");
 
 const app = express();
 app.use(cors());
@@ -37,6 +38,7 @@ app.use("/api/contacts", contactRoutes);
 app.use("/api/sos", sosRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/location", locationRoutes);
+app.use("/api/device", deviceRoutes);
 
 const { authenticateToken } = require("./server/middleware/auth");
 const { pool } = require("./server/db");
