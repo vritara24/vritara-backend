@@ -1,99 +1,213 @@
-require("dotenv").config();
-
 const express = require("express");
-const cors = require("cors");
+const fs = require("fs");
 const path = require("path");
-const { initializeDatabase } = require("./server/db");
+const { pool } = require("../db");
+const validateApiKey = require("../middleware/apiKey");
 
-const validateApiKey = require("./server/middleware/apiKey");
-const authRoutes = require("./server/routes/auth");
-const userRoutes = require("./server/routes/user");
-const contactRoutes = require("./server/routes/contacts");
-const sosRoutes = require("./server/routes/sos");
-const uploadRoutes = require("./server/routes/upload");
-const locationRoutes = require("./server/routes/location");
-const deviceRoutes = require("./server/routes/device");
+const router = express.Router();
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+/*
+  DEMO LINK:
+  Device VRITARA001 -> linked to this email
+*/
+const LINKED_EMAIL = "swasthikshetty547@gmail.com";
+const LINKED_DEVICE_ID = "VRITARA001";
 
-app.use((req, res, next) => {
-  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
-  next();
-});
+// uploads folder
+const uploadsDir = path.join(__dirname, "../uploads");
 
-app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(path.join(__dirname, "server/uploads")));
+// create uploads folder if missing
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-const PORT = parseInt(process.env.PORT || "5000", 10);
+// ==========================
+// DEVICE SOS ROUTE
+// ==========================
+router.post("/sos", validateApiKey, async (req, res) => {
+  const client = await pool.connect();
 
-app.get("/status", (req, res) => {
-  res.json({ status: "API is live" });
-});
-
-app.use("/api", authRoutes);
-app.use("/api/user", userRoutes);
-app.use("/api/contacts", contactRoutes);
-app.use("/api/sos", sosRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/location", locationRoutes);
-app.use("/api/device", deviceRoutes);
-
-const { authenticateToken } = require("./server/middleware/auth");
-const { pool } = require("./server/db");
-app.get("/api/incidents", authenticateToken, async (req, res) => {
   try {
-    const incidentsResult = await pool.query(
-      "SELECT * FROM incident_logs WHERE user_id = $1 ORDER BY created_at DESC",
-      [req.user.id]
-    );
+    const {
+      device_id,
+      trigger_type,
+      latitude,
+      longitude,
+      sound_level,
+      motion_level
+    } = req.body;
 
-    const incidents = [];
-    for (const incident of incidentsResult.rows) {
-      const smsResult = await pool.query(
-        "SELECT contact_name, contact_phone, status, created_at FROM sms_logs WHERE incident_id = $1",
-        [incident.id]
-      );
-      const broadcastResult = await pool.query(
-        `SELECT nb.distance_meters, nb.status, nb.created_at, u.username as receiver_name
-         FROM nearby_broadcasts nb LEFT JOIN users u ON nb.receiver_id = u.id
-         WHERE nb.incident_id = $1`,
-        [incident.id]
-      );
-      const mediaResult = await pool.query(
-        "SELECT id, filename, original_name, mimetype, file_size, created_at FROM media_storage WHERE incident_id = $1",
-        [incident.id]
-      );
-      incidents.push({
-        ...incident,
-        sms_notifications: smsResult.rows,
-        nearby_broadcasts: broadcastResult.rows,
-        media_files: mediaResult.rows,
+    if (!device_id) {
+      return res.status(400).json({ error: "device_id required" });
+    }
+
+    if (device_id !== LINKED_DEVICE_ID) {
+      return res.status(404).json({
+        error: "Unknown device",
+        received_device_id: device_id,
+        expected_device_id: LINKED_DEVICE_ID
       });
     }
 
-    res.json({ incidents });
+    // Find linked user from email
+    const userResult = await client.query(
+      "SELECT id, username, email FROM users WHERE email = $1 LIMIT 1",
+      [LINKED_EMAIL]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        error: "Linked user not found in database",
+        linked_email: LINKED_EMAIL
+      });
+    }
+
+    const linkedUser = userResult.rows[0];
+    const user_id = linkedUser.id;
+
+    await client.query("BEGIN");
+
+    const incidentResult = await client.query(
+      `INSERT INTO incident_logs (user_id, type, latitude, longitude, message, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       RETURNING *`,
+      [
+        user_id,
+        "device",
+        latitude || null,
+        longitude || null,
+        `Device SOS Triggered (${trigger_type || "unknown"}) | Sound: ${sound_level || 0} | Motion: ${motion_level || 0}`,
+        "active"
+      ]
+    );
+
+    const incident = incidentResult.rows[0];
+
+    await client.query("COMMIT");
+
+    res.json({
+      success: true,
+      message: "Device SOS saved successfully",
+      linked_user: linkedUser,
+      incident
+    });
   } catch (err) {
-    console.error("Get incidents error:", err);
+    await client.query("ROLLBACK");
+    console.error("Device SOS error:", err);
+    res.status(500).json({ error: "Server error", details: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ==========================
+// DEVICE HEARTBEAT ROUTE
+// ==========================
+router.post("/heartbeat", validateApiKey, async (req, res) => {
+  try {
+    const { device_id } = req.body || {};
+
+    res.json({
+      success: true,
+      status: "Device alive",
+      device_id: device_id || "unknown",
+      linked_email: LINKED_EMAIL,
+      linked_device_id: LINKED_DEVICE_ID
+    });
+  } catch (err) {
+    console.error("Heartbeat error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+// ==========================
+// REAL IMAGE UPLOAD ROUTE
+// ==========================
+router.post(
+  "/upload-image",
+  validateApiKey,
+  express.raw({ type: "*/*", limit: "10mb" }),
+  async (req, res) => {
+    const client = await pool.connect();
 
-async function startServer() {
-  try {
-    await initializeDatabase();
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`VRITARA Server running on port ${PORT}`);
-    });
-  } catch (err) {
-    console.error("Failed to start server:", err);
-    process.exit(1);
+    try {
+      const imageBuffer = req.body;
+
+      if (!imageBuffer || !imageBuffer.length) {
+        return res.status(400).json({ error: "No image received" });
+      }
+
+      // Find linked user
+      const userResult = await client.query(
+        "SELECT id FROM users WHERE email = $1 LIMIT 1",
+        [LINKED_EMAIL]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: "Linked user not found" });
+      }
+
+      const user_id = userResult.rows[0].id;
+
+      // Get latest incident
+      const incidentResult = await client.query(
+        `SELECT id
+         FROM incident_logs
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [user_id]
+      );
+
+      if (incidentResult.rows.length === 0) {
+        return res.status(404).json({ error: "No incident found to attach image" });
+      }
+
+      const incidentId = incidentResult.rows[0].id;
+
+      // create filename
+      const fileName = `incident_${incidentId}_${Date.now()}.jpg`;
+      const filePath = path.join(uploadsDir, fileName);
+
+      // save image file
+      fs.writeFileSync(filePath, imageBuffer);
+
+      // save DB record
+      const mediaResult = await client.query(
+        `INSERT INTO media_storage (
+          incident_id,
+          filename,
+          original_name,
+          mimetype,
+          file_size,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING *`,
+        [
+          incidentId,
+          fileName,
+          fileName,
+          "image/jpeg",
+          imageBuffer.length
+        ]
+      );
+
+      console.log("Image uploaded successfully for incident:", incidentId);
+
+      res.json({
+        success: true,
+        message: "Image uploaded successfully",
+        media: mediaResult.rows[0]
+      });
+
+    } catch (err) {
+      console.error("Upload image error:", err);
+      res.status(500).json({ error: "Upload failed", details: err.message });
+    } finally {
+      client.release();
+    }
   }
-}
+);
 
-startServer();
+module.exports = router;
