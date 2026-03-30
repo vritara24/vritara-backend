@@ -1,5 +1,4 @@
 const express = require("express");
-const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { pool } = require("../db");
@@ -15,25 +14,13 @@ const LINKED_EMAIL = "swasthikshetty547@gmail.com";
 const LINKED_DEVICE_ID = "VRITARA001";
 
 // ==========================
-// STORAGE
+// STORAGE PATH
 // ==========================
 const uploadDir = path.join(__dirname, "../uploads/device-media");
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueName = `device_image_${Date.now()}.jpg`;
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({ storage });
 
 // ==========================
 // DEVICE SOS ROUTE
@@ -55,6 +42,7 @@ router.post("/sos", validateApiKey, async (req, res) => {
       return res.status(400).json({ error: "device_id required" });
     }
 
+    // Check if correct device
     if (device_id !== LINKED_DEVICE_ID) {
       return res.status(404).json({
         error: "Unknown device",
@@ -63,6 +51,7 @@ router.post("/sos", validateApiKey, async (req, res) => {
       });
     }
 
+    // Find linked user from email
     const userResult = await client.query(
       "SELECT id, username, email FROM users WHERE email = $1 LIMIT 1",
       [LINKED_EMAIL]
@@ -114,80 +103,93 @@ router.post("/sos", validateApiKey, async (req, res) => {
 });
 
 // ==========================
-// IMAGE UPLOAD ROUTE
+// DEVICE IMAGE UPLOAD ROUTE
 // ==========================
-router.post("/upload-image", validateApiKey, upload.single("image"), async (req, res) => {
-  const client = await pool.connect();
+// ESP32 sends RAW JPEG bytes directly
+router.post(
+  "/upload-image",
+  validateApiKey,
+  express.raw({ type: "image/jpeg", limit: "10mb" }),
+  async (req, res) => {
+    const client = await pool.connect();
 
-  try {
-    const device_id = req.headers["x-device-id"] || LINKED_DEVICE_ID;
+    try {
+      const device_id = req.headers["x-device-id"] || LINKED_DEVICE_ID;
 
-    if (device_id !== LINKED_DEVICE_ID) {
-      return res.status(404).json({
-        error: "Unknown device",
-        received_device_id: device_id,
-        expected_device_id: LINKED_DEVICE_ID
+      if (device_id !== LINKED_DEVICE_ID) {
+        return res.status(404).json({
+          error: "Unknown device",
+          received_device_id: device_id,
+          expected_device_id: LINKED_DEVICE_ID
+        });
+      }
+
+      const userResult = await client.query(
+        "SELECT id FROM users WHERE email = $1 LIMIT 1",
+        [LINKED_EMAIL]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: "Linked user not found" });
+      }
+
+      const user_id = userResult.rows[0].id;
+
+      const latestIncidentResult = await client.query(
+        `SELECT * FROM incident_logs
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [user_id]
+      );
+
+      if (latestIncidentResult.rows.length === 0) {
+        return res.status(404).json({ error: "No incident found for image linking" });
+      }
+
+      const incident = latestIncidentResult.rows[0];
+
+      if (!req.body || !req.body.length) {
+        return res.status(400).json({ error: "No image data received" });
+      }
+
+      const fileName = `device_image_${Date.now()}.jpg`;
+      const filePathAbs = path.join(uploadDir, fileName);
+
+      // IMPORTANT: store relative web path for app display
+      const filePathDb = `/uploads/device-media/${fileName}`;
+
+      fs.writeFileSync(filePathAbs, req.body);
+
+      const mediaResult = await client.query(
+        `INSERT INTO media_storage
+         (user_id, incident_id, filename, original_name, mimetype, file_size, file_path, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         RETURNING *`,
+        [
+          user_id,
+          incident.id,
+          fileName,
+          fileName,
+          "image/jpeg",
+          req.body.length,
+          filePathDb
+        ]
+      );
+
+      res.json({
+        success: true,
+        message: "Image uploaded successfully",
+        media: mediaResult.rows[0]
       });
+    } catch (err) {
+      console.error("Device image upload error:", err);
+      res.status(500).json({ error: "Server error", details: err.message });
+    } finally {
+      client.release();
     }
-
-    const userResult = await client.query(
-      "SELECT id FROM users WHERE email = $1 LIMIT 1",
-      [LINKED_EMAIL]
-    );
-
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: "Linked user not found" });
-    }
-
-    const user_id = userResult.rows[0].id;
-
-    const latestIncidentResult = await client.query(
-      `SELECT * FROM incident_logs
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [user_id]
-    );
-
-    if (latestIncidentResult.rows.length === 0) {
-      return res.status(404).json({ error: "No incident found for image linking" });
-    }
-
-    const incident = latestIncidentResult.rows[0];
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No image uploaded" });
-    }
-
-    const filePath = `/uploads/device-media/${req.file.filename}`;
-
-    const mediaResult = await client.query(
-      `INSERT INTO media_storage
-       (incident_id, filename, original_name, mimetype, file_size, file_path, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING *`,
-      [
-        incident.id,
-        req.file.filename,
-        req.file.originalname || req.file.filename,
-        req.file.mimetype || "image/jpeg",
-        req.file.size || 0,
-        filePath
-      ]
-    );
-
-    res.json({
-      success: true,
-      message: "Image uploaded successfully",
-      media: mediaResult.rows[0]
-    });
-  } catch (err) {
-    console.error("Device image upload error:", err);
-    res.status(500).json({ error: "Server error", details: err.message });
-  } finally {
-    client.release();
   }
-});
+);
 
 // ==========================
 // DEVICE HEARTBEAT ROUTE
