@@ -6,81 +6,160 @@ const validateApiKey = require("../middleware/apiKey");
 
 const router = express.Router();
 
-// LINK DEVICE TO USER
-const LINKED_EMAIL = "swasthikshetty547@gmail.com";
+// ==============================
+// DEVICE ↔ USER LINK
+// ==============================
+// IMPORTANT:
+// Change user_id only if your actual app user is different.
+// Right now this is demo-linked to user_id = 1
 const LINKED_DEVICE_ID = "VRITARA001";
+const LINKED_USER_ID = 1;
 
-// ==========================
-// SOS ROUTE (already working)
-// ==========================
+// uploads folder path
+const uploadsDir = path.join(__dirname, "../uploads");
+
+// ensure uploads folder exists
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// ==============================
+// 1) DEVICE SOS
+// ==============================
 router.post("/sos", validateApiKey, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { device_id, latitude, longitude } = req.body;
+    const {
+      device_id,
+      trigger_type,
+      latitude,
+      longitude,
+      sound_level,
+      motion_level
+    } = req.body || {};
+
+    if (!device_id) {
+      return res.status(400).json({ error: "device_id required" });
+    }
 
     if (device_id !== LINKED_DEVICE_ID) {
-      return res.status(404).json({ error: "Unknown device" });
+      return res.status(404).json({ error: "Device not linked to any user" });
     }
 
     await client.query("BEGIN");
 
-    const result = await client.query(
-      `INSERT INTO incident_logs (user_id, type, latitude, longitude, message, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING *`,
+    const incidentResult = await client.query(
+      `INSERT INTO incident_logs (
+        user_id,
+        type,
+        latitude,
+        longitude,
+        message,
+        status,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      RETURNING *`,
       [
-        1,
+        LINKED_USER_ID,
         "device",
         latitude || null,
         longitude || null,
-        "Device SOS Triggered",
+        `Device SOS Triggered (${trigger_type || "unknown"}) | Sound: ${sound_level || 0} | Motion: ${motion_level || 0}`,
         "active"
       ]
     );
 
+    const incident = incidentResult.rows[0];
+
     await client.query("COMMIT");
 
-    res.json({ success: true, incident: result.rows[0] });
+    console.log("Device SOS saved:", incident.id);
+
+    res.json({
+      success: true,
+      message: "Device SOS saved successfully",
+      incident
+    });
 
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err);
+    console.error("Device SOS error:", err);
     res.status(500).json({ error: "Server error" });
   } finally {
     client.release();
   }
 });
 
-
-// ==========================
-// 🔥 IMAGE UPLOAD ROUTE
-// ==========================
-router.post("/upload-image", validateApiKey, async (req, res) => {
+// ==============================
+// 2) DEVICE HEARTBEAT
+// ==============================
+router.post("/heartbeat", validateApiKey, async (req, res) => {
   try {
+    const { device_id } = req.body || {};
 
+    res.json({
+      success: true,
+      status: "Device alive",
+      device_id: device_id || "unknown"
+    });
+  } catch (err) {
+    console.error("Heartbeat error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ==============================
+// 3) REAL IMAGE UPLOAD FROM ESP32-CAM
+// ==============================
+router.post("/upload-image", validateApiKey, express.raw({ type: "*/*", limit: "10mb" }), async (req, res) => {
+  const client = await pool.connect();
+
+  try {
     const imageBuffer = req.body;
 
-    if (!imageBuffer || imageBuffer.length === 0) {
+    if (!imageBuffer || !imageBuffer.length) {
       return res.status(400).json({ error: "No image received" });
     }
 
-    // create filename
-    const fileName = `image_${Date.now()}.jpg`;
+    // get latest incident for this user
+    const incidentResult = await client.query(
+      `SELECT id
+       FROM incident_logs
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [LINKED_USER_ID]
+    );
 
-    const uploadPath = path.join(__dirname, "../uploads", fileName);
+    if (incidentResult.rows.length === 0) {
+      return res.status(404).json({ error: "No incident found to attach image" });
+    }
 
-    // save file
-    fs.writeFileSync(uploadPath, imageBuffer);
+    const incidentId = incidentResult.rows[0].id;
 
-    console.log("Image saved:", fileName);
+    // create file
+    const fileName = `incident_${incidentId}_${Date.now()}.jpg`;
+    const filePath = path.join(uploadsDir, fileName);
 
-    // OPTIONAL: Save into DB (basic)
-    await pool.query(
-      `INSERT INTO media_storage (incident_id, filename, original_name, mimetype, file_size, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())`,
+    // save physical image
+    fs.writeFileSync(filePath, imageBuffer);
+
+    // save DB record
+    const mediaResult = await client.query(
+      `INSERT INTO media_storage (
+        incident_id,
+        filename,
+        original_name,
+        mimetype,
+        file_size,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING *`,
       [
-        1, // for demo link
+        incidentId,
         fileName,
         fileName,
         "image/jpeg",
@@ -88,18 +167,20 @@ router.post("/upload-image", validateApiKey, async (req, res) => {
       ]
     );
 
-    res.json({ success: true, file: fileName });
+    console.log("Image uploaded and linked to incident:", incidentId);
+
+    res.json({
+      success: true,
+      message: "Image uploaded successfully",
+      media: mediaResult.rows[0]
+    });
 
   } catch (err) {
-    console.error("Upload error:", err);
+    console.error("Upload image error:", err);
     res.status(500).json({ error: "Upload failed" });
+  } finally {
+    client.release();
   }
-});
-
-
-// ==========================
-router.post("/heartbeat", validateApiKey, (req, res) => {
-  res.json({ status: "Device alive" });
 });
 
 module.exports = router;
