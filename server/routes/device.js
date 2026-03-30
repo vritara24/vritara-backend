@@ -5,15 +5,15 @@ const validateApiKey = require("../middleware/apiKey");
 const router = express.Router();
 
 /*
-  DEMO MODE:
-  Device VRITARA001 is linked to this user email
+  DEMO LINK:
+  Device VRITARA001 -> linked to this email
 */
 const LINKED_EMAIL = "swasthikshetty547@gmail.com";
 const LINKED_DEVICE_ID = "VRITARA001";
 
-// =======================
+// ==========================
 // DEVICE SOS ROUTE
-// =======================
+// ==========================
 router.post("/sos", validateApiKey, async (req, res) => {
   const client = await pool.connect();
 
@@ -33,20 +33,28 @@ router.post("/sos", validateApiKey, async (req, res) => {
 
     // Check if correct device
     if (device_id !== LINKED_DEVICE_ID) {
-      return res.status(404).json({ error: "Unknown device" });
+      return res.status(404).json({
+        error: "Unknown device",
+        received_device_id: device_id,
+        expected_device_id: LINKED_DEVICE_ID
+      });
     }
 
-    // Find user by linked email
+    // Find linked user from email
     const userResult = await client.query(
-      "SELECT id FROM users WHERE email = $1 LIMIT 1",
+      "SELECT id, username, email FROM users WHERE email = $1 LIMIT 1",
       [LINKED_EMAIL]
     );
 
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: "Linked user account not found" });
+      return res.status(404).json({
+        error: "Linked user not found in database",
+        linked_email: LINKED_EMAIL
+      });
     }
 
-    const user_id = userResult.rows[0].id;
+    const linkedUser = userResult.rows[0];
+    const user_id = linkedUser.id;
 
     await client.query("BEGIN");
 
@@ -71,21 +79,21 @@ router.post("/sos", validateApiKey, async (req, res) => {
     res.json({
       success: true,
       message: "Device SOS saved successfully",
-      linked_user_id: user_id,
+      linked_user: linkedUser,
       incident
     });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("Device SOS error:", err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error", details: err.message });
   } finally {
     client.release();
   }
 });
 
-// =======================
+// ==========================
 // DEVICE HEARTBEAT ROUTE
-// =======================
+// ==========================
 router.post("/heartbeat", validateApiKey, async (req, res) => {
   try {
     const { device_id } = req.body || {};
@@ -93,7 +101,9 @@ router.post("/heartbeat", validateApiKey, async (req, res) => {
     res.json({
       success: true,
       status: "Device alive",
-      device_id: device_id || "unknown"
+      device_id: device_id || "unknown",
+      linked_email: LINKED_EMAIL,
+      linked_device_id: LINKED_DEVICE_ID
     });
   } catch (err) {
     console.error("Heartbeat error:", err);
