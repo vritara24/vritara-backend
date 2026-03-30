@@ -6,9 +6,14 @@ const router = express.Router();
 
 /*
   DEMO MODE:
-  VRITARA001 -> user_id = 1
+  Device VRITARA001 is linked to this user email
 */
+const LINKED_EMAIL = "swasthikshetty547@gmail.com";
+const LINKED_DEVICE_ID = "VRITARA001";
 
+// =======================
+// DEVICE SOS ROUTE
+// =======================
 router.post("/sos", validateApiKey, async (req, res) => {
   const client = await pool.connect();
 
@@ -26,16 +31,22 @@ router.post("/sos", validateApiKey, async (req, res) => {
       return res.status(400).json({ error: "device_id required" });
     }
 
-    // DEMO HARD-CODED USER LINK
-    let user_id = null;
-
-    if (device_id === "VRITARA001") {
-      user_id = 1;
+    // Check if correct device
+    if (device_id !== LINKED_DEVICE_ID) {
+      return res.status(404).json({ error: "Unknown device" });
     }
 
-    if (!user_id) {
-      return res.status(404).json({ error: "Device not linked to any user" });
+    // Find user by linked email
+    const userResult = await client.query(
+      "SELECT id FROM users WHERE email = $1 LIMIT 1",
+      [LINKED_EMAIL]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: "Linked user account not found" });
     }
+
+    const user_id = userResult.rows[0].id;
 
     await client.query("BEGIN");
 
@@ -60,6 +71,7 @@ router.post("/sos", validateApiKey, async (req, res) => {
     res.json({
       success: true,
       message: "Device SOS saved successfully",
+      linked_user_id: user_id,
       incident
     });
   } catch (err) {
@@ -71,6 +83,9 @@ router.post("/sos", validateApiKey, async (req, res) => {
   }
 });
 
+// =======================
+// DEVICE HEARTBEAT ROUTE
+// =======================
 router.post("/heartbeat", validateApiKey, async (req, res) => {
   try {
     const { device_id } = req.body || {};
