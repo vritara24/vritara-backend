@@ -80,28 +80,6 @@ app.get("/api/incidents", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/api/sensor-data", validateApiKey, (req, res) => {
-  console.log("Sensor Data Received:", req.body);
-  const { sound_level, motion_level } = req.body;
-  let emergency = false;
-  if (sound_level > 80 && motion_level > 1.5) {
-    emergency = true;
-  }
-  res.json({
-    emergency,
-    message: emergency ? "Emergency detected" : "Normal condition",
-  });
-});
-
-app.post("/api/emergency/manual", validateApiKey, (req, res) => {
-  console.log("Manual Emergency Triggered");
-  res.json({ emergency: true, message: "Manual SOS Triggered" });
-});
-
-app.post("/api/heartbeat", validateApiKey, (req, res) => {
-  res.json({ status: "Device alive" });
-});
-
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
