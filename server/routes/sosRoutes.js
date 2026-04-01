@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const Incident = require("../models/Incident");
 
-// create uploads folder if not exists
+// uploads folder path
 const uploadsDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
@@ -17,10 +17,9 @@ router.post("/upload-image", express.raw({ type: "*/*", limit: "10mb" }), (req, 
     const filePath = path.join(uploadsDir, filename);
 
     fs.writeFileSync(filePath, req.body);
-
     res.send(`/uploads/${filename}`);
   } catch (err) {
-    console.error(err);
+    console.error("Image Upload Error:", err);
     res.status(500).send("");
   }
 });
@@ -32,10 +31,9 @@ router.post("/upload-audio", express.raw({ type: "*/*", limit: "10mb" }), (req, 
     const filePath = path.join(uploadsDir, filename);
 
     fs.writeFileSync(filePath, req.body);
-
     res.send(`/uploads/${filename}`);
   } catch (err) {
-    console.error(err);
+    console.error("Audio Upload Error:", err);
     res.status(500).send("");
   }
 });
@@ -57,71 +55,34 @@ router.post("/sos", async (req, res) => {
 
     await newIncident.save();
 
-    res.json({ success: true });
+    res.json({ success: true, incident: newIncident });
   } catch (err) {
-    console.error(err);
+    console.error("SOS Save Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // GET HISTORY
 router.get("/history", async (req, res) => {
-  const data = await Incident.find().sort({ createdAt: -1 });
-  res.json(data);
-});
-
-// GET MEDIA
-router.get("/media", async (req, res) => {
-  const data = await Incident.find({
-    $or: [{ image: { $ne: "" } }, { audio: { $ne: "" } }]
-  }).sort({ createdAt: -1 });
-
-  res.json(data);
-});
-
-module.exports = router;  } catch (err) {
-    console.error(err);
-    res.status(500).send("");
-  }
-});
-
-// ---------------- SAVE SOS ----------------
-router.post("/sos", async (req, res) => {
   try {
-    const { triggerType, soundLevel, motionLevel, image, audio } = req.body;
-
-    const incident = new Incident({
-      triggerType,
-      soundLevel,
-      motionLevel,
-      image,
-      audio,
-      location: "No location",
-      status: "active"
-    });
-
-    await incident.save();
-
-    res.json({ success: true });
+    const data = await Incident.find().sort({ createdAt: -1 });
+    res.json(data);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ---------------- HISTORY ----------------
-router.get("/history", async (req, res) => {
-  const data = await Incident.find().sort({ createdAt: -1 });
-  res.json(data);
-});
-
-// ---------------- MEDIA ----------------
+// GET MEDIA
 router.get("/media", async (req, res) => {
-  const data = await Incident.find({
-    $or: [{ image: { $ne: "" } }, { audio: { $ne: "" } }]
-  }).sort({ createdAt: -1 });
+  try {
+    const data = await Incident.find({
+      $or: [{ image: { $ne: "" } }, { audio: { $ne: "" } }]
+    }).sort({ createdAt: -1 });
 
-  res.json(data);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
