@@ -20,12 +20,23 @@ router.post("/sos", validateApiKey, async (req, res) => {
   try {
     const {
       device_id,
+      triggerType,
       trigger_type,
       latitude,
       longitude,
+      soundLevel,
       sound_level,
-      motion_level
+      motionLevel,
+      motion_level,
+      image,
+      audio
     } = req.body;
+
+    const finalTriggerType = triggerType || trigger_type || "manual_sos";
+    const finalSoundLevel = soundLevel ?? sound_level ?? 0;
+    const finalMotionLevel = motionLevel ?? motion_level ?? 0;
+    const finalImage = image || "";
+    const finalAudio = audio || "";
 
     if (!device_id) {
       return res.status(400).json({ error: "device_id required" });
@@ -34,7 +45,126 @@ router.post("/sos", validateApiKey, async (req, res) => {
     // Check if correct device
     if (device_id !== LINKED_DEVICE_ID) {
       return res.status(404).json({
-        error: "Unknown device",
+        success: false,
+        error: "Device not linked"
+      });
+    }
+
+    // Insert incident into PostgreSQL
+    const result = await client.query(
+      `
+      INSERT INTO incidents
+      (device_id, linked_email, trigger_type, latitude, longitude, sound_level, motion_level, image, audio, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+      RETURNING *
+      `,
+      [
+        device_id,
+        LINKED_EMAIL,
+        finalTriggerType,
+        latitude || 0,
+        longitude || 0,
+        finalSoundLevel,
+        finalMotionLevel,
+        finalImage,
+        finalAudio
+      ]
+    );
+
+    console.log("🔥 SOS RECEIVED:", result.rows[0]);
+
+    res.status(200).json({
+      success: true,
+      message: "SOS saved successfully",
+      incident: result.rows[0]
+    });
+  } catch (error) {
+    console.error("SOS ERROR:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// ==========================
+// HEARTBEAT
+// ==========================
+router.post("/heartbeat", validateApiKey, async (req, res) => {
+  try {
+    const { device_id } = req.body;
+
+    if (!device_id) {
+      return res.status(400).json({
+        success: false,
+        error: "device_id required"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      status: "Device alive",
+      device_id: device_id,
+      linked_email: LINKED_EMAIL,
+      linked_device_id: LINKED_DEVICE_ID
+    });
+  } catch (error) {
+    console.error("Heartbeat Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==========================
+// HISTORY
+// ==========================
+router.get("/history", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT * FROM incidents
+      ORDER BY created_at DESC
+      `
+    );
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error("History Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==========================
+// MEDIA
+// ==========================
+router.get("/media", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT * FROM incidents
+      WHERE image IS NOT NULL OR audio IS NOT NULL
+      ORDER BY created_at DESC
+      `
+    );
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error("Media Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+module.exports = router;        error: "Unknown device",
         received_device_id: device_id,
         expected_device_id: LINKED_DEVICE_ID
       });
