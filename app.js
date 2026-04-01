@@ -4,7 +4,6 @@ const path = require("path");
 
 const app = express();
 
-// ROUTES
 const uploadRoutes = require("./server/routes/upload");
 const deviceRoutes = require("./server/routes/device");
 
@@ -12,19 +11,11 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// static uploads folder
 app.use("/uploads", express.static(path.join(__dirname, "server/uploads")));
 
-// routes
 app.use("/upload", uploadRoutes);
 app.use("/device", deviceRoutes);
 
-// heartbeat route
-app.post("/heartbeat", (req, res) => {
-  res.json({ success: true, status: "Device alive" });
-});
-
-// test route
 app.get("/", (req, res) => {
   res.send("VRITARA Backend Running");
 });
