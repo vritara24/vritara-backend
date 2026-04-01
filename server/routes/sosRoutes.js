@@ -4,13 +4,13 @@ const fs = require("fs");
 const path = require("path");
 const Incident = require("../models/Incident");
 
-// Ensure uploads folder exists
+// create uploads folder if not exists
 const uploadsDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// ---------------- IMAGE UPLOAD ----------------
+// IMAGE UPLOAD
 router.post("/upload-image", express.raw({ type: "*/*", limit: "10mb" }), (req, res) => {
   try {
     const filename = Date.now() + ".jpg";
@@ -25,7 +25,7 @@ router.post("/upload-image", express.raw({ type: "*/*", limit: "10mb" }), (req, 
   }
 });
 
-// ---------------- AUDIO UPLOAD ----------------
+// AUDIO UPLOAD
 router.post("/upload-audio", express.raw({ type: "*/*", limit: "10mb" }), (req, res) => {
   try {
     const filename = Date.now() + ".wav";
@@ -35,6 +35,51 @@ router.post("/upload-audio", express.raw({ type: "*/*", limit: "10mb" }), (req, 
 
     res.send(`/uploads/${filename}`);
   } catch (err) {
+    console.error(err);
+    res.status(500).send("");
+  }
+});
+
+// SAVE SOS
+router.post("/sos", async (req, res) => {
+  try {
+    const { triggerType, soundLevel, motionLevel, image, audio } = req.body;
+
+    const newIncident = new Incident({
+      triggerType,
+      soundLevel,
+      motionLevel,
+      image,
+      audio,
+      location: "No location",
+      status: "active"
+    });
+
+    await newIncident.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET HISTORY
+router.get("/history", async (req, res) => {
+  const data = await Incident.find().sort({ createdAt: -1 });
+  res.json(data);
+});
+
+// GET MEDIA
+router.get("/media", async (req, res) => {
+  const data = await Incident.find({
+    $or: [{ image: { $ne: "" } }, { audio: { $ne: "" } }]
+  }).sort({ createdAt: -1 });
+
+  res.json(data);
+});
+
+module.exports = router;  } catch (err) {
     console.error(err);
     res.status(500).send("");
   }
