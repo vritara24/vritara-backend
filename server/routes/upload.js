@@ -1,40 +1,51 @@
 const express = require("express");
-const router = express.Router();
-const fs = require("fs");
+const multer = require("multer");
 const path = require("path");
 
-// ensure uploads folder exists
-const uploadDir = path.join(__dirname, "../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
+const router = express.Router();
 
-// IMAGE UPLOAD
-router.post("/image", express.raw({ type: "*/*", limit: "10mb" }), (req, res) => {
-  try {
-    const filename = Date.now() + ".jpg";
-    const filepath = path.join(uploadDir, filename);
-
-    fs.writeFileSync(filepath, req.body);
-
-    res.json({ path: `/uploads/${filename}` });
-  } catch (err) {
-    console.error("Image Upload Error:", err);
-    res.status(500).json({ error: "Image upload failed" });
+// Storage config
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "server/uploads/");
+  },
+  filename: function (req, file, cb) {
+    const uniqueName = Date.now() + path.extname(file.originalname);
+    cb(null, uniqueName);
   }
 });
 
+const upload = multer({ storage });
+
+// ==========================
+// IMAGE UPLOAD
+// ==========================
+router.post("/image", upload.single("image"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: "No image uploaded" });
+  }
+
+  res.status(200).json({
+    success: true,
+    filePath: `/uploads/${req.file.filename}`
+  });
+});
+
+// ==========================
 // AUDIO UPLOAD
-router.post("/audio", express.raw({ type: "*/*", limit: "10mb" }), (req, res) => {
-  try {
-    const filename = Date.now() + ".wav";
-    const filepath = path.join(uploadDir, filename);
+// ==========================
+router.post("/audio", upload.single("audio"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: "No audio uploaded" });
+  }
 
-    fs.writeFileSync(filepath, req.body);
+  res.status(200).json({
+    success: true,
+    filePath: `/uploads/${req.file.filename}`
+  });
+});
 
-    res.json({ path: `/uploads/${filename}` });
-  } catch (err) {
-    console.error("Audio Upload Error:", err);
+module.exports = router;    console.error("Audio Upload Error:", err);
     res.status(500).json({ error: "Audio upload failed" });
   }
 });
