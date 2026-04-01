@@ -1,11 +1,19 @@
-const API_KEY = "vritara-safety-device-key-2024";
+module.exports = function validateApiKey(req, res, next) {
+  const apiKey = req.headers["x-api-key"];
 
-function validateApiKey(req, res, next) {
-  const clientKey = req.headers["x-api-key"];
-  if (clientKey !== API_KEY) {
-    return res.status(401).json({ error: "Unauthorized: Invalid API Key" });
+  if (!apiKey) {
+    return res.status(401).json({
+      success: false,
+      error: "API key missing"
+    });
   }
-  next();
-}
 
-module.exports = validateApiKey;
+  if (apiKey !== "vritara-safety-device-key-2024") {
+    return res.status(403).json({
+      success: false,
+      error: "Invalid API key"
+    });
+  }
+
+  next();
+};
