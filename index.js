@@ -4,7 +4,7 @@ const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
-const sosRoutes = require("./routes/sosRoutes");
+const sosRoutes = require("./server/routes/sosRoutes");
 
 const app = express();
 
