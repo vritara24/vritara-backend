@@ -15,17 +15,17 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "server/uploads")));
 
-// Routes
+// API Routes
 app.use("/device", deviceRoutes);
 app.use("/upload", uploadRoutes);
 
-// Test route
+// ROOT TEST ROUTE
 app.get("/", (req, res) => {
   res.send("VRITARA Backend Running Successfully");
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
