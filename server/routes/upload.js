@@ -39,4 +39,9 @@ router.post("/audio", express.raw({ type: "*/*", limit: "10mb" }), (req, res) =>
   }
 });
 
+module.exports = router;    console.error("Audio Upload Error:", err);
+    res.status(500).json({ error: "Audio upload failed" });
+  }
+});
+
 module.exports = router;
